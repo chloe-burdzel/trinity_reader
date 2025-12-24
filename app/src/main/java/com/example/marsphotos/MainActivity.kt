@@ -23,13 +23,17 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import com.example.marsphotos.ui.MarsPhotosApp
+import com.example.marsphotos.databases.FeedDatabase
 import com.example.marsphotos.ui.theme.MarsPhotosTheme
+import com.example.marsphotos.ui.MarsPhotosApp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        FeedDatabase.createInstance(applicationContext)
+
         setContent {
             MarsPhotosTheme {
                 Surface(

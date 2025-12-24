@@ -15,15 +15,39 @@
  */
 package com.example.marsphotos.ui.screens
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.marsphotos.databases.Feed
+import com.example.marsphotos.databases.FeedDatabase
+import com.example.marsphotos.network.MarsApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlin.collections.emptyList
 
 class MarsViewModel : ViewModel() {
     /** The mutable State that stores the status of the most recent request */
-    var marsUiState: String by mutableStateOf("")
+
+    sealed interface MarsUiState {
+        data class Success(val photos: List<String>) : MarsUiState
+        object Loading : MarsUiState
+        object Error: MarsUiState
+    }
+
+    private var _marsUiState = MutableStateFlow<MarsUiState>(MarsUiState.Loading)
+    var marsUiState: StateFlow<MarsUiState> = _marsUiState.asStateFlow()
         private set
+
+    val feeds: StateFlow<List<Feed>> = FeedDatabase.getInstance()!!.feedDao().getAllAsFlow()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList(),
+        )
 
     /**
      * Call getMarsPhotos() on init so we can display status immediately.
@@ -36,7 +60,28 @@ class MarsViewModel : ViewModel() {
      * Gets Mars photos information from the Mars API Retrofit service and updates the
      * [MarsPhoto] [List] [MutableList].
      */
-    fun getMarsPhotos() {
-        marsUiState = "Set the Mars API status response here!"
+    private fun getMarsPhotos() {
+        viewModelScope.launch {
+            val db = FeedDatabase.getInstance()
+            if(db == null){
+                _marsUiState.update { MarsUiState.Error }
+            }
+            else{
+                val feedDao = db.feedDao()
+                val feeds: List<Feed> = feedDao.getAll()
+
+                val photos = mutableListOf<String>()
+                for(feed in feeds) {
+                    try {
+                        photos.add(MarsApi.retrofitService.getPhotos(feed.link.toString()))
+                    } catch (e: Exception) {
+                        println(e.stackTrace)
+                        db.feedDao().delete(feed)
+                        _marsUiState.update { MarsUiState.Error }
+                    }
+                }
+                _marsUiState.update { MarsUiState.Success(photos) }
+            }
+        }
     }
 }
